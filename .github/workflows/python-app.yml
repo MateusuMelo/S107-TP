@@ -80,7 +80,7 @@ jobs:
 
     - name: ✉️ Send email notification
       env:
-        EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
-        SMTP_USER: ${{ secrets.SMTP_USER }}
+        EMAIL_DESTINO: ${{ vars.EMAIL_DESTINO }}
+        SMTP_USER: ${{ vars.SMTP_USER }}
         SMTP_PASS: ${{ secrets.SMTP_PASS }}
       run: python email_notify.py
