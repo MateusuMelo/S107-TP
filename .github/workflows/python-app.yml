@@ -1,0 +1,85 @@
+name: Python application CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 🧪 Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🐍 Set up Python 3.10
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.10"
+
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: 🧪 Run tests with pytest
+      run: pytest --junitxml=report.xml
+
+    - name: 📤 Upload test report
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-report
+        path: report.xml
+
+  build:
+    name: 📦 Build Package
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🧰 Install zip
+      run: sudo apt update && sudo apt install -y zip
+
+    - name: 📦 Build project
+      run: zip -r project.zip . -x '*.git*'
+
+    - name: 📤 Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: project-build
+        path: project.zip
+
+  notify:
+    name: 📧 Notify by Email
+    runs-on: ubuntu-latest
+    needs: [test, build]
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.10"
+
+    - name: 📨 Install email dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install secure-smtplib
+
+    - name: ✉️ Send email notification
+      env:
+        EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+        SMTP_USER: ${{ secrets.SMTP_USER }}
+        SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      run: python email_notify.py
