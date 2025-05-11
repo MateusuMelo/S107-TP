@@ -74,24 +74,6 @@ pipeline {
                 }
             }
         }
-
-        // Estágio 4: Criar pacote ZIP
-        stage('Build Package') {
-            when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-            }
-            steps {
-                script {
-                    docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside('-v ${WORKSPACE}:/app') {
-                        sh '''
-                            zip -r /app/project.zip /app -x "*.git*" "*.pyc" "__pycache__/*"
-                        '''
-                    }
-                    archiveArtifacts 'project.zip'
-                }
-            }
-        }
-
         // Estágio 5: Enviar notificação
         stage('Notify') {
             when {
