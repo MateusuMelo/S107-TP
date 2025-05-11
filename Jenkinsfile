@@ -14,18 +14,29 @@ pipeline {
             }
         }
 
-        stage('🧪 Run Tests') {
+        stage('🐳 Build Docker image') {
             steps {
                 script {
-                    withEnv(['PYTHONUNBUFFERED=1']) {
-                        sh '''
-                        python3 -m pip install --upgrade pip
-                        pip install pytest
-                        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-                        pytest --junitxml=report.xml
-                        '''
-                    }
+                    // Build da imagem Docker local (Dockerfile na raiz)
+                    dockerImage = docker.build("custom-python-image")
                 }
+            }
+        }
+
+        stage('🧪 Run Tests') {
+            agent {
+                docker {
+                    image "custom-python-image"
+                    args "-u root"
+                }
+            }
+            steps {
+                sh '''
+                python3 -m pip install --upgrade pip
+                pip install pytest
+                if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+                pytest --junitxml=report.xml
+                '''
             }
             post {
                 always {
@@ -36,10 +47,15 @@ pipeline {
         }
 
         stage('📦 Build Project') {
+            agent {
+                docker {
+                    image "custom-python-image"
+                    args "-u root"
+                }
+            }
             steps {
                 sh '''
-                sudo apt-get update
-                sudo apt-get install -y zip
+                apt-get update && apt-get install -y zip
                 zip -r project.zip . -x '*.git*'
                 '''
             }
@@ -53,6 +69,12 @@ pipeline {
         stage('✉️ Send Notification') {
             when {
                 expression { currentBuild.currentResult ==~ /SUCCESS|FAILURE|UNSTABLE/ }
+            }
+            agent {
+                docker {
+                    image "custom-python-image"
+                    args "-u root"
+                }
             }
             steps {
                 sh '''
