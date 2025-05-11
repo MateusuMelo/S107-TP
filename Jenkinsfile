@@ -1,97 +1,84 @@
 pipeline {
     agent any
 
-    environment {
-        EMAIL_DESTINO = credentials('EMAIL_DESTINO')
-        SMTP_USER = credentials('SMTP_USER')
-        SMTP_PASS = credentials('SMTP_PASS')
-    }
-
     stages {
-        stage('📥 Checkout code') {
+        stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('🐳 Build Docker image') {
+        stage('Test') {
+            agent {
+                docker {
+                    image 'python:3.10'
+                    reuseNode true
+                }
+            }
+            steps {
+                sh 'python -m pip install --upgrade pip'
+                sh 'pip install pytest'
+                sh 'if [ -f requirements.txt ]; then pip install -r requirements.txt; fi'
+                sh 'pytest --junitxml=report.xml'
+                junit 'report.xml'
+                archiveArtifacts artifacts: 'report.xml', fingerprint: true
+            }
+            post {
+                always {
+                    echo 'Testing stage completed'
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'sudo apt update && sudo apt install -y zip || true'
+                sh 'zip -r project.zip . -x "*.git*"'
+                archiveArtifacts artifacts: 'project.zip', fingerprint: true
+            }
+            post {
+                always {
+                    echo 'Build stage completed'
+                }
+            }
+        }
+
+        stage('Notify') {
             steps {
                 script {
-                    // Build da imagem Docker local (Dockerfile na raiz)
-                    dockerImage = docker.build("custom-python-image")
-                }
-            }
-        }
+                    // Assuming you have Python available on the Jenkins agent
+                    // If not, you would need to use a Docker container here too
+                    sh 'python -m pip install --upgrade pip'
+                    sh 'pip install secure-smtplib'
 
-        stage('🧪 Run Tests') {
-            agent {
-                docker {
-                    image "custom-python-image"
-                    args "-u root"
+                    // You'll need to set these credentials in Jenkins
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'SMTP_CREDENTIALS',
+                            usernameVariable: 'SMTP_USER',
+                            passwordVariable: 'SMTP_PASS'
+                        )
+                    ]) {
+                        sh '''
+                            export EMAIL_DESTINO=${env.EMAIL_DESTINO}
+                            export SMTP_USER=${SMTP_USER}
+                            export SMTP_PASS=${SMTP_PASS}
+                            python email_notify.py
+                        '''
+                    }
                 }
-            }
-            steps {
-                sh '''
-                python3 -m pip install --upgrade pip
-                pip install pytest
-                if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-                pytest --junitxml=report.xml
-                '''
             }
             post {
                 always {
-                    junit 'report.xml'
-                    archiveArtifacts artifacts: 'report.xml', fingerprint: true
+                    echo 'Notification stage completed'
                 }
-            }
-        }
-
-        stage('📦 Build Project') {
-            agent {
-                docker {
-                    image "custom-python-image"
-                    args "-u root"
-                }
-            }
-            steps {
-                sh '''
-                apt-get update && apt-get install -y zip
-                zip -r project.zip . -x '*.git*'
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'project.zip', fingerprint: true
-                }
-            }
-        }
-
-        stage('✉️ Send Notification') {
-            when {
-                expression { currentBuild.currentResult ==~ /SUCCESS|FAILURE|UNSTABLE/ }
-            }
-            agent {
-                docker {
-                    image "custom-python-image"
-                    args "-u root"
-                }
-            }
-            steps {
-                sh '''
-                python3 -m pip install --upgrade pip
-                pip install secure-smtplib
-                python3 email_notify.py
-                '''
             }
         }
     }
 
     post {
-        failure {
-            echo '❌ Build failed.'
-        }
-        success {
-            echo '✅ Build succeeded.'
+        always {
+            echo 'Pipeline completed'
         }
     }
 }
