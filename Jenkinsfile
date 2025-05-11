@@ -2,76 +2,95 @@ pipeline {
     agent any
 
     environment {
-        // Set these variables in Jenkins configuration
+        // Configurações de email (configurar no Jenkins)
         EMAIL_DESTINO = credentials('EMAIL_DESTINO')
         SMTP_USER = credentials('SMTP_USER')
         SMTP_PASS = credentials('SMTP_PASS')
+
+        // Nome da imagem Docker
+        IMAGE_NAME = 'python-app'
     }
 
     stages {
+        // Estágio 1: Obter o código-fonte
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Test') {
+        // Estágio 2: Construir a imagem Docker
+        stage('Build Docker Image') {
             steps {
                 script {
-                    // Assuming you have a container image available in your workspace
-                    // that contains Python and can be executed directly
-                    sh '''
-                        # Use the container image you have in your project root
-                        # This is a placeholder - adjust to how your container should be run
-                        ./python-container/run.sh install-dependencies
-                        ./python-container/run.sh run-tests
-                    '''
-                    junit 'report.xml' // Assuming your tests generate this file
+                    if (!fileExists('Dockerfile')) {
+                        error("Dockerfile não encontrado! Por favor, verifique se o arquivo está na raiz do projeto.")
+                    }
+                    sh "docker build -t ${env.IMAGE_NAME} ."
+                }
+            }
+        }
+
+        // Estágio 3: Executar testes
+        stage('Run Tests') {
+            steps {
+                script {
+                    sh """
+                    docker run --rm \
+                    -v ${WORKSPACE}:/app \
+                    ${env.IMAGE_NAME} \
+                    sh -c 'pytest --junitxml=report.xml'
+                    """
+                    junit 'report.xml'
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'report.xml', fingerprint: true
+                    archiveArtifacts 'report.xml'
                 }
             }
         }
 
-        stage('Build') {
+        // Estágio 4: Criar pacote ZIP
+        stage('Build Package') {
             steps {
-                sh '''
-                    # Install zip if not present
-                    if ! command -v zip &> /dev/null; then
-                        echo "zip not found, attempting to install..."
-                        sudo apt-get update && sudo apt-get install -y zip || true
-                    fi
-                    zip -r project.zip . -x "*.git*"
-                '''
-                archiveArtifacts artifacts: 'project.zip', fingerprint: true
+                sh """
+                docker run --rm \
+                -v ${WORKSPACE}:/app \
+                ${env.IMAGE_NAME} \
+                sh -c 'zip -r /app/project.zip /app -x "*.git*"'
+                """
+                archiveArtifacts 'project.zip'
             }
         }
 
+        // Estágio 5: Enviar notificação
         stage('Notify') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+            }
             steps {
                 script {
-                    // Run the notification inside your Python container
-                    sh '''
-                        ./python-container/run.sh install-email-deps
-                        ./python-container/run.sh send-notification
-                    '''
+                    sh """
+                    docker run --rm \
+                    -e EMAIL_DESTINO=${env.EMAIL_DESTINO} \
+                    -e SMTP_USER=${env.SMTP_USER} \
+                    -e SMTP_PASS=${env.SMTP_PASS} \
+                    ${env.IMAGE_NAME} \
+                    python email_notify.py
+                    """
                 }
             }
         }
     }
 
+    // Ações pós-build
     post {
-        always {
-            echo 'Pipeline completed'
-        }
         failure {
-            echo 'Pipeline failed'
+            echo "A pipeline falhou. Por favor, verifique os logs para identificar o problema."
         }
         success {
-            echo 'Pipeline succeeded'
+            echo "Pipeline executada com sucesso!"
         }
     }
 }
