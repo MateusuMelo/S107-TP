@@ -18,18 +18,6 @@ pipeline {
     }
 
     stages {
-        // Estágio 1: Obter o código-fonte
-        stage('Checkout') {
-            steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    extensions: [[$class: 'CleanCheckout']],
-                    userRemoteConfigs: [[credentialsId: 'git-creds', url: 'https://github.com/seu-repositorio']]
-                ])
-            }
-        }
-
         // Estágio 2: Construir a imagem Docker
         stage('Build Docker Image') {
             steps {
