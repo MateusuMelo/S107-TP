@@ -69,9 +69,6 @@ pipeline {
     }
 
     post {
-        always {
-            sh 'docker system prune -f || true'
-        }
         failure {
             script {
                 docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside("-e EMAIL_DESTINO=${env.EMAIL_DESTINO} -e SMTP_USER=${env.SMTP_USER} -e SMTP_PASS=${env.SMTP_PASS} -v ${WORKSPACE}:/app") {
@@ -85,6 +82,9 @@ pipeline {
                     sh 'python /app/email_notify.py'
                 }
             }
+        }
+        always {
+            sh 'docker system prune -f || true'
         }
     }
 }
