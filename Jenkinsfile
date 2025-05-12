@@ -83,8 +83,5 @@ pipeline {
                 }
             }
         }
-        always {
-            sh 'docker system prune -f || true'
-        }
     }
 }
