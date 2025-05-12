@@ -2,14 +2,13 @@ pipeline {
     agent any
 
     environment {
-        // Configurações de email (usando as credenciais exatas que você tem)
+
         EMAIL_DESTINO = credentials('EMAIL_DESTINO')
         SMTP_USER = credentials('SMTP_USER')
         SMTP_PASS = credentials('SMTP_PASS')
 
-        // Nome da imagem Docker
         IMAGE_NAME = 'python-app'
-        DOCKER_REGISTRY = 'seu-registro-docker' // Opcional para deploy
+        DOCKER_REGISTRY = 'seu-registro-docker'
     }
 
     options {
@@ -22,7 +21,7 @@ pipeline {
             steps {
                 script {
                     if (!fileExists('Dockerfile')) {
-                        error("Dockerfile não encontrado! Por favor, verifique se o arquivo está na raiz do projeto.")
+                        error("Dockerfile não encontrado!")
                     }
                     docker.build("${env.IMAGE_NAME}:${env.BUILD_ID}")
                     sh "docker tag ${env.IMAGE_NAME}:${env.BUILD_ID} ${env.IMAGE_NAME}:latest"
@@ -51,19 +50,6 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'report.xml', allowEmptyArchive: true
-                    script {
-                        if (currentBuild.result == 'UNSTABLE') {
-                            emailext (
-                                subject: "⚠️ Pipeline ${env.JOB_NAME} - Testes instáveis (Build #${env.BUILD_NUMBER})",
-                                body: "Alguns testes falharam. Verifique o relatório: ${env.BUILD_URL}testReport/",
-                                to: env.EMAIL_DESTINO,
-                                from: env.SMTP_USER,
-                                replyTo: env.SMTP_USER,
-                                smtpUser: env.SMTP_USER,
-                                smtpPassword: env.SMTP_PASS
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -74,15 +60,9 @@ pipeline {
             }
             steps {
                 script {
-                    emailext (
-                        subject: "✅ Pipeline ${env.JOB_NAME} - Sucesso (Build #${env.BUILD_NUMBER})",
-                        body: "Pipeline executada com sucesso!\n\nDetalhes: ${env.BUILD_URL}",
-                        to: env.EMAIL_DESTINO,
-                        from: env.SMTP_USER,
-                        replyTo: env.SMTP_USER,
-                        smtpUser: env.SMTP_USER,
-                        smtpPassword: env.SMTP_PASS
-                    )
+                    docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside("-e EMAIL_DESTINO=${env.EMAIL_DESTINO} -e SMTP_USER=${env.SMTP_USER} -e SMTP_PASS=${env.SMTP_PASS} -v ${WORKSPACE}:/app") {
+                        sh 'python /app/email_notify.py'
+                    }
                 }
             }
         }
@@ -108,26 +88,18 @@ pipeline {
             sh 'docker system prune -f || true'
         }
         failure {
-            emailext (
-                subject: "❌ Pipeline ${env.JOB_NAME} - Falhou (Build #${env.BUILD_NUMBER})",
-                body: "A pipeline falhou. Por favor, verifique os logs.\n\nDetalhes: ${env.BUILD_URL}",
-                to: env.EMAIL_DESTINO,
-                from: env.SMTP_USER,
-                replyTo: env.SMTP_USER,
-                smtpUser: env.SMTP_USER,
-                smtpPassword: env.SMTP_PASS
-            )
+            script {
+                docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside("-e EMAIL_DESTINO=${env.EMAIL_DESTINO} -e SMTP_USER=${env.SMTP_USER} -e SMTP_PASS=${env.SMTP_PASS} -v ${WORKSPACE}:/app") {
+                    sh 'python /app/email_notify.py'
+                }
+            }
         }
         unstable {
-            emailext (
-                subject: "⚠️ Pipeline ${env.JOB_NAME} - Instável (Build #${env.BUILD_NUMBER})",
-                body: "A pipeline está instável (alguns testes falharam).\n\nDetalhes: ${env.BUILD_URL}testReport/",
-                to: env.EMAIL_DESTINO,
-                from: env.SMTP_USER,
-                replyTo: env.SMTP_USER,
-                smtpUser: env.SMTP_USER,
-                smtpPassword: env.SMTP_PASS
-            )
+            script {
+                docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside("-e EMAIL_DESTINO=${env.EMAIL_DESTINO} -e SMTP_USER=${env.SMTP_USER} -e SMTP_PASS=${env.SMTP_PASS} -v ${WORKSPACE}:/app") {
+                    sh 'python /app/email_notify.py'
+                }
+            }
         }
     }
 }
