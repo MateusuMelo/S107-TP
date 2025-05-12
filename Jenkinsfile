@@ -66,21 +66,6 @@ pipeline {
                 }
             }
         }
-
-        stage('Push to Registry') {
-            when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-                branch 'main'
-            }
-            steps {
-                script {
-                    docker.withRegistry("https://${env.DOCKER_REGISTRY}", 'docker-registry-creds') {
-                        docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").push()
-                        docker.image("${env.IMAGE_NAME}:latest").push()
-                    }
-                }
-            }
-        }
     }
 
     post {
