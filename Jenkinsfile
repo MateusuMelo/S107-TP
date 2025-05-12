@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        // Configurações de email (configurar no Jenkins)
+        // Configurações de email (usando as credenciais exatas que você tem)
         EMAIL_DESTINO = credentials('EMAIL_DESTINO')
         SMTP_USER = credentials('SMTP_USER')
         SMTP_PASS = credentials('SMTP_PASS')
@@ -18,39 +18,28 @@ pipeline {
     }
 
     stages {
-        // Estágio 2: Construir a imagem Docker
         stage('Build Docker Image') {
             steps {
                 script {
                     if (!fileExists('Dockerfile')) {
                         error("Dockerfile não encontrado! Por favor, verifique se o arquivo está na raiz do projeto.")
                     }
-
                     docker.build("${env.IMAGE_NAME}:${env.BUILD_ID}")
-
-                    // Opcional: Tag para produção
                     sh "docker tag ${env.IMAGE_NAME}:${env.BUILD_ID} ${env.IMAGE_NAME}:latest"
                 }
             }
             post {
-                success {
-                    echo "Imagem Docker construída com sucesso!"
-                }
-                failure {
-                    echo "Falha ao construir a imagem Docker"
-                }
+                success { echo "Imagem Docker construída com sucesso!" }
+                failure { echo "Falha ao construir a imagem Docker" }
             }
         }
 
-        // Estágio 3: Executar testes
         stage('Run Tests') {
             steps {
                 script {
                     try {
                         docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside('-v ${WORKSPACE}:/app') {
-                            sh '''
-                                pytest --junitxml=report.xml || true
-                            '''
+                            sh 'pytest --junitxml=report.xml || true'
                         }
                         junit 'report.xml'
                     } catch (Exception e) {
@@ -67,30 +56,37 @@ pipeline {
                             emailext (
                                 subject: "⚠️ Pipeline ${env.JOB_NAME} - Testes instáveis (Build #${env.BUILD_NUMBER})",
                                 body: "Alguns testes falharam. Verifique o relatório: ${env.BUILD_URL}testReport/",
-                                to: env.EMAIL_DESTINO
+                                to: env.EMAIL_DESTINO,
+                                from: env.SMTP_USER,
+                                replyTo: env.SMTP_USER,
+                                smtpUser: env.SMTP_USER,
+                                smtpPassword: env.SMTP_PASS
                             )
                         }
                     }
                 }
             }
         }
-        // Estágio 5: Enviar notificação
+
         stage('Notify') {
             when {
                 expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
             }
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'smtp-creds', passwordVariable: 'SMTP_PASS', usernameVariable: 'SMTP_USER')]) {
-                        docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside("-e SMTP_USER=${SMTP_USER} -e SMTP_PASS=${SMTP_PASS}") {
-                            sh 'python email_notify.py'
-                        }
-                    }
+                    emailext (
+                        subject: "✅ Pipeline ${env.JOB_NAME} - Sucesso (Build #${env.BUILD_NUMBER})",
+                        body: "Pipeline executada com sucesso!\n\nDetalhes: ${env.BUILD_URL}",
+                        to: env.EMAIL_DESTINO,
+                        from: env.SMTP_USER,
+                        replyTo: env.SMTP_USER,
+                        smtpUser: env.SMTP_USER,
+                        smtpPassword: env.SMTP_PASS
+                    )
                 }
             }
         }
 
-        // Estágio Opcional: Push para Registry
         stage('Push to Registry') {
             when {
                 expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
@@ -107,33 +103,30 @@ pipeline {
         }
     }
 
-    // Ações pós-build
     post {
         always {
-            script {
-                // Limpeza de containers
-                sh 'docker system prune -f || true'
-            }
-        }
-        success {
-            emailext (
-                subject: "✅ Pipeline ${env.JOB_NAME} - Sucesso (Build #${env.BUILD_NUMBER})",
-                body: "Pipeline executada com sucesso!\n\nDetalhes: ${env.BUILD_URL}",
-                to: env.EMAIL_DESTINO
-            )
+            sh 'docker system prune -f || true'
         }
         failure {
             emailext (
                 subject: "❌ Pipeline ${env.JOB_NAME} - Falhou (Build #${env.BUILD_NUMBER})",
                 body: "A pipeline falhou. Por favor, verifique os logs.\n\nDetalhes: ${env.BUILD_URL}",
-                to: env.EMAIL_DESTINO
+                to: env.EMAIL_DESTINO,
+                from: env.SMTP_USER,
+                replyTo: env.SMTP_USER,
+                smtpUser: env.SMTP_USER,
+                smtpPassword: env.SMTP_PASS
             )
         }
         unstable {
             emailext (
                 subject: "⚠️ Pipeline ${env.JOB_NAME} - Instável (Build #${env.BUILD_NUMBER})",
                 body: "A pipeline está instável (alguns testes falharam).\n\nDetalhes: ${env.BUILD_URL}testReport/",
-                to: env.EMAIL_DESTINO
+                to: env.EMAIL_DESTINO,
+                from: env.SMTP_USER,
+                replyTo: env.SMTP_USER,
+                smtpUser: env.SMTP_USER,
+                smtpPassword: env.SMTP_PASS
             )
         }
     }
