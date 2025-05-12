@@ -2,13 +2,7 @@ pipeline {
     agent any
 
     environment {
-
-        EMAIL_DESTINO = credentials('EMAIL_DESTINO')
-        SMTP_USER = credentials('SMTP_USER')
-        SMTP_PASS = credentials('SMTP_PASS')
-
         IMAGE_NAME = 'python-app'
-        DOCKER_REGISTRY = 'seu-registro-docker'
     }
 
     options {
@@ -53,35 +47,58 @@ pipeline {
                 }
             }
         }
-
-        stage('Notify') {
-            when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-            }
-            steps {
-                script {
-                    docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside("-e EMAIL_DESTINO=${env.EMAIL_DESTINO} -e SMTP_USER=${env.SMTP_USER} -e SMTP_PASS=${env.SMTP_PASS} -v ${WORKSPACE}:/app") {
-                        sh 'python /app/email_notify.py'
-                    }
-                }
-            }
-        }
     }
 
     post {
+        always {
+            sh 'docker system prune -f || true'
+            // Limpeza adicional
+            sh 'docker container prune -f || true'
+            sh 'docker image prune -f || true'
+        }
+        success {
+            emailext (
+                subject: "✅ Pipeline SUCCESS - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+                <h2>Pipeline executado com sucesso!</h2>
+                <p><b>Job:</b> ${env.JOB_NAME}</p>
+                <p><b>Número do Build:</b> ${env.BUILD_NUMBER}</p>
+                <p><b>Console:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                """,
+                to: 'seu-email@dominio.com',  // Substitua pelo e-mail real
+                recipientProviders: [[$class: 'DevelopersRecipientProvider']],
+                mimeType: 'text/html'
+            )
+        }
         failure {
-            script {
-                docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside("-e EMAIL_DESTINO=${env.EMAIL_DESTINO} -e SMTP_USER=${env.SMTP_USER} -e SMTP_PASS=${env.SMTP_PASS} -v ${WORKSPACE}:/app") {
-                    sh 'python /app/email_notify.py'
-                }
-            }
+            emailext (
+                subject: "❌ Pipeline FAILED - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+                <h2 style="color:red">Falha no pipeline!</h2>
+                <p><b>Job:</b> ${env.JOB_NAME}</p>
+                <p><b>Número do Build:</b> ${env.BUILD_NUMBER}</p>
+                <p><b>Console:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                <p><b>Cause:</b> Verifique os logs para detalhes</p>
+                """,
+                to: 'seu-email@dominio.com',  // Substitua pelo e-mail real
+                recipientProviders: [[$class: 'DevelopersRecipientProvider']],
+                mimeType: 'text/html'
+            )
         }
         unstable {
-            script {
-                docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside("-e EMAIL_DESTINO=${env.EMAIL_DESTINO} -e SMTP_USER=${env.SMTP_USER} -e SMTP_PASS=${env.SMTP_PASS} -v ${WORKSPACE}:/app") {
-                    sh 'python /app/email_notify.py'
-                }
-            }
+            emailext (
+                subject: "⚠️ Pipeline UNSTABLE - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+                <h2 style="color:orange">Pipeline instável!</h2>
+                <p><b>Job:</b> ${env.JOB_NAME}</p>
+                <p><b>Número do Build:</b> ${env.BUILD_NUMBER}</p>
+                <p><b>Console:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                <p><b>Possível causa:</b> Testes falharam, mas não quebraram o build</p>
+                """,
+                to: 'seu-email@dominio.com',  // Substitua pelo e-mail real
+                recipientProviders: [[$class: 'DevelopersRecipientProvider']],
+                mimeType: 'text/html'
+            )
         }
     }
 }
