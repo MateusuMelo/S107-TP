@@ -43,7 +43,8 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'report.xml', allowEmptyArchive: true
+                    junit 'reports/report.xml'
+                    archiveArtifacts artifacts: 'reports/report.xml', allowEmptyArchive: true
                 }
             }
         }
