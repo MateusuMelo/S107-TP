@@ -3,6 +3,9 @@ pipeline {
 
     environment {
         IMAGE_NAME = 'python-app'
+        SMTP_USER = credentials('SMTP_USER')
+        SMTP_PASSWORD = credentials('SMTP_PASS')
+        EMAIL_TO = credentials('EMAIL_DESTINO')
     }
 
     options {
@@ -21,10 +24,6 @@ pipeline {
                     sh "docker tag ${env.IMAGE_NAME}:${env.BUILD_ID} ${env.IMAGE_NAME}:latest"
                 }
             }
-            post {
-                success { echo "Imagem Docker construída com sucesso!" }
-                failure { echo "Falha ao construir a imagem Docker" }
-            }
         }
 
         stage('Run Tests') {
@@ -32,7 +31,7 @@ pipeline {
                 script {
                     try {
                         docker.image("${env.IMAGE_NAME}:${env.BUILD_ID}").inside('-v ${WORKSPACE}:/app') {
-                            sh 'pytest --junitxml=report.xml || true'
+                            sh 'pytest'
                         }
                         junit 'report.xml'
                     } catch (Exception e) {
@@ -43,8 +42,7 @@ pipeline {
             }
             post {
                 always {
-                    junit 'reports/report.xml'
-                    archiveArtifacts artifacts: 'reports/report.xml', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'report.xml', allowEmptyArchive: true
                 }
             }
         }
@@ -53,51 +51,43 @@ pipeline {
     post {
         always {
             sh 'docker system prune -f || true'
-            // Limpeza adicional
-            sh 'docker container prune -f || true'
-            sh 'docker image prune -f || true'
         }
         success {
             emailext (
-                subject: "✅ Pipeline SUCCESS - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                subject: "✅ SUCCESS - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: """
-                <h2>Pipeline executado com sucesso!</h2>
+                <h2>Pipeline concluído com sucesso!</h2>
                 <p><b>Job:</b> ${env.JOB_NAME}</p>
-                <p><b>Número do Build:</b> ${env.BUILD_NUMBER}</p>
-                <p><b>Console:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                <p><b>Build:</b> ${env.BUILD_NUMBER}</p>
+                <p><b>Console:</b> <a href="${env.BUILD_URL}console">Link</a></p>
                 """,
-                to: 'seu-email@dominio.com',  // Substitua pelo e-mail real
-                recipientProviders: [[$class: 'DevelopersRecipientProvider']],
+                to: "${env.EMAIL_TO}",
                 mimeType: 'text/html'
             )
         }
         failure {
             emailext (
-                subject: "❌ Pipeline FAILED - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                subject: "❌ FAILED - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: """
                 <h2 style="color:red">Falha no pipeline!</h2>
                 <p><b>Job:</b> ${env.JOB_NAME}</p>
-                <p><b>Número do Build:</b> ${env.BUILD_NUMBER}</p>
-                <p><b>Console:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                <p><b>Cause:</b> Verifique os logs para detalhes</p>
+                <p><b>Build:</b> ${env.BUILD_NUMBER}</p>
+                <p><b>Erro:</b> Verifique o <a href="${env.BUILD_URL}console">log</a></p>
                 """,
-                to: 'seu-email@dominio.com',  // Substitua pelo e-mail real
-                recipientProviders: [[$class: 'DevelopersRecipientProvider']],
+                to: "${env.EMAIL_TO}",
                 mimeType: 'text/html'
             )
         }
         unstable {
             emailext (
-                subject: "⚠️ Pipeline UNSTABLE - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                subject: "⚠️ UNSTABLE - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: """
-                <h2 style="color:orange">Pipeline instável!</h2>
+                <h2 style="color:orange">Testes falharam (build instável)</h2>
                 <p><b>Job:</b> ${env.JOB_NAME}</p>
-                <p><b>Número do Build:</b> ${env.BUILD_NUMBER}</p>
-                <p><b>Console:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                <p><b>Possível causa:</b> Testes falharam, mas não quebraram o build</p>
+                <p><b>Build:</b> ${env.BUILD_NUMBER}</p>
+                <p><b>Detalhes:</b> <a href="${env.BUILD_URL}testReport">Relatório</a></p>
                 """,
-                to: 'seu-email@dominio.com',  // Substitua pelo e-mail real
-                recipientProviders: [[$class: 'DevelopersRecipientProvider']],
+                to: "${env.EMAIL_TO}",
                 mimeType: 'text/html'
             )
         }
