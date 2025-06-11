@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  jenkins:
+    image: mateusumelo/jenkins:latest  # usa sua imagem com dados incluídos
+    container_name: jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker
+    group_add:
+      - "984"
+
+  backend:
+    image: mateusumelo/c216-l1-backend:latest
+    container_name: backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/alunos
+
+  frontend:
+    image: mateusumelo/c216-l1-frontend:latest
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+      
+    environment:
+      - FLASK_SECRET_KEY=sua-chave-secreta-aqui-123456
+
+  db:
+    image: postgres
+    container_name: db
+    restart: always
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: alunos
+    volumes:
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  s107pv2:
+    image: mateusumelo/s107-pv2:latest
+    container_name: s107pv2
+    depends_on:
+      - db
+    command: ["pytest", "--junitxml=/app/report.xml"]
+    volumes:
+      - ./test-artifacts:/app
